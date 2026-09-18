@@ -132,14 +132,22 @@ def component_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             )
             early_clarify.append(1.0 if early else 0.0)
 
-        # verify coverage before purchase
+        # verify coverage before purchase: the agent opened a product-detail
+        # sub-page (attributes / features) at least once before deciding —
+        # mined from the action history so it works retrospectively on
+        # already-written JSONs
+        actions = [
+            c.get("agent_action", "")
+            for c in r.get("conversation", [])
+            if isinstance(c, dict)
+        ]
+        clicked_attrs = any(
+            ("click[attributes]" in a) or ("click[features]" in a) for a in actions
+        )
         views = state.get("viewed_products", {}) or {}
-        if views:
-            verify_cov.append(
-                sum(1 for v in views.values() if v.get("attributes_checked")) / len(views)
-            )
-        elif r.get("purchase"):
-            verify_cov.append(0.0)
+        attr_checked = any(bool(v.get("attributes_checked")) for v in views.values())
+        if r.get("purchase") or views:
+            verify_cov.append(1.0 if (clicked_attrs or attr_checked) else 0.0)
 
         tk = r.get("tokens", {}) or {}
         tokens.append(tk.get("prompt", 0) + tk.get("completion", 0))
@@ -162,7 +170,10 @@ def component_metrics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         "avg_turns": mean(turns_list),
         "avg_searches": mean(search_counts),
         "avg_latency_s": mean(latency),
-        "avg_tokens_per_task": mean(tokens),
+        # NOTE: tokens are LLM-instance lifetime cumulatives (see agent.py);
+        # use only for rough cost comparisons across runs of the same size.
+        "avg_cum_tokens_per_task": mean(tokens),
+        "total_cum_tokens_last": tokens[-1] if tokens else 0,
     }
     if slot_scores:
         out["slot_n"] = len(slot_scores)

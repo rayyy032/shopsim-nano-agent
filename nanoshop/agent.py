@@ -46,6 +46,10 @@ class ShoppingAgent:
         """Run one task end-to-end; writes {output_dir}/{model_tag}/{task_id}.json
         (or directly {output_dir}/{task_id}.json when model_tag is empty)."""
         result: Dict[str, Any] = {"task_id": task_id}
+        self._tok_base = (
+            self.llm.total_prompt_tokens,
+            self.llm.total_completion_tokens,
+        )
         t0 = time.time()
         try:
             result = self._run(task_id)
@@ -60,6 +64,7 @@ class ShoppingAgent:
                 "conversation": [],
                 "error": f"{e}: {traceback.format_exc()[-800:]}",
             }
+            result["tokens"] = self._token_usage()
         finally:
             self.env.release()
         result["latency_s"] = round(time.time() - t0, 1)
@@ -153,6 +158,15 @@ class ShoppingAgent:
             conversation,
         )
 
+    def _token_usage(self) -> Dict[str, int]:
+        """Per-task tokens: difference of LLM lifetime counters since run start."""
+        base_p, base_c = getattr(self, "_tok_base", (0, 0))
+        return {
+            "prompt": self.llm.total_prompt_tokens - base_p,
+            "completion": self.llm.total_completion_tokens - base_c,
+            "n_llm_calls": self.llm.n_calls,
+        }
+
     def _finalize(self, env_resp: Dict[str, Any], conversation: list) -> Dict[str, Any]:
         return {
             "task_id": self.pipeline.state.task_id,
@@ -162,10 +176,6 @@ class ShoppingAgent:
             "purchase": env_resp.get("purchase", {}),
             "conversation": conversation,
             "trace": self.pipeline.trace.to_dict(),
-            "tokens": {
-                "prompt": self.llm.total_prompt_tokens,
-                "completion": self.llm.total_completion_tokens,
-                "n_llm_calls": self.llm.n_calls,
-            },
+            "tokens": self._token_usage(),
             "state": self.pipeline.state.snapshot(),
         }

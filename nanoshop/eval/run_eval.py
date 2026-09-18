@@ -107,7 +107,9 @@ def run_one(args_tuple) -> str:
     out_dir = os.path.join(output_dir, setting, tag)
     os.makedirs(out_dir, exist_ok=True)
     done_ids = {
-        int(f.split(".")[0]) for f in os.listdir(out_dir) if f.endswith(".json")
+        int(f.split(".")[0])
+        for f in os.listdir(out_dir)
+        if f.endswith(".json") and f.split(".")[0].isdigit()
     }
 
     for tid in task_ids:

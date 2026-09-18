@@ -158,6 +158,12 @@ class ShoppingPipeline:
         s = t.stage("verify", page_info["item_text"][:160])
         if not self.ablations.get("no_verify"):
             self._run_verify(page_info)
+            # an attributes sub-page after click[attributes] counts as an
+            # attribute check for the product we last opened
+            if page_info.get("page") == "sub" and "attribute" in page_info.get("item_text", "")[:200].lower():
+                last_view = state.viewed_products.get(getattr(self, "_last_item_asin", "") or "")
+                if last_view is not None:
+                    last_view.attributes_checked = True
             n_verified = sum(1 for v in state.viewed_products.values() if v.attributes_checked)
             s.finish(output=f"viewed={len(state.viewed_products)} attr_checked={n_verified}")
         else:
