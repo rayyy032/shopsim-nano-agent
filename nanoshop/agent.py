@@ -99,7 +99,11 @@ class ShoppingAgent:
 
         if self.mode == "multi":
             assert self.shopper is not None
-            self.shopper.reset(instruction, reset_info.get("goal_options", []))
+            # The shopper always holds the concrete goal (official multi_eval
+            # semantics: shopper.reset(env_result["instruction"], ...)); in
+            # persona mode only the agent side is downgraded to
+            # instruction_simple + persona document.
+            self.shopper.reset(reset_info["instruction"], reset_info.get("goal_options", []))
             shopper_msg = self.shopper.step("请提供您的购物需求。")
             conversation.append({"shopper": shopper_msg})
 

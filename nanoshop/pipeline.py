@@ -240,10 +240,16 @@ class ShoppingPipeline:
         if state.confirmed_with_user:
             sys_prompt += "\n- 用户已确认购买（可直接 click[buy now]）"
         if getattr(self, "mode", "multi") == "single":
-            sys_prompt += (
-                "\n\n注意：当前为单轮模式，用户需求已在任务指令中完整给出，"
-                "禁止 ask_user，直接根据指令搜索并购买。"
-            )
+            if state.user_persona:
+                sys_prompt += (
+                    "\n\n注意：当前为单轮模式（无用户交互），任务指令较简略，"
+                    "请结合用户画像推断完整需求，禁止 ask_user，直接搜索并购买。"
+                )
+            else:
+                sys_prompt += (
+                    "\n\n注意：当前为单轮模式，用户需求已在任务指令中完整给出，"
+                    "禁止 ask_user，直接根据指令搜索并购买。"
+                )
         # dead-loop guard: surface recent repeated actions to the LLM
         recent = state.last_actions[-3:]
         if len(recent) >= 2 and len(set(recent)) == 1:

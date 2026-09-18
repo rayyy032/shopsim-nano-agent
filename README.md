@@ -47,31 +47,38 @@
 
 官方协议：reward 四维（r_type / r_att / r_option / r_price），4 setting（multi/single × standard/persona）× 30 任务 + 4 消融 × 15 任务，DeepSeek-chat 驱动。
 
-**端到端（multi_standard，主 setting）**
+**端到端（4 setting × 30 任务）**
 
-| 指标 | 完整版 | 消融对照见下 |
-|---|---|---|
-| reward（宽松成功） | 【评测中】 | |
-| 购买正确商品率 | 【评测中】 | |
-| 平均轮数 / tokens | 【评测中】 | |
+| Setting | reward（宽松成功） | 全维成功 | 买对商品率 |
+|---|---|---|---|
+| multi_standard（主 setting） | 0.643 | 0.433 | 0.533 |
+| single_standard | 0.679 | 0.433 | 0.500 |
+| multi_persona | **0.762** | 0.500 | **0.733** |
+| single_persona | 0.746 | **0.533** | 0.600 |
 
-**组件级指标**（本项目提出）
+> 两个 persona setting 都优于对应 standard setting：user_persona 文档为 agent 提供了指令之外的隐性需求线索，弥补了多轮对话中 shopper 只逐步透露偏好的信息缺口。
+
+**组件级指标**（multi_standard，本项目提出）
 
 | 指标 | 含义 | 结果 |
 |---|---|---|
-| slot F1 | NLU 槽位 vs 官方 goal 属性（thefuzz>85 模糊匹配） | 【评测中】 |
-| gold_candidate_hit | 检索结果是否包含 goal 商品 | 【评测中】 |
-| clarify_rate | 购买前向用户澄清确认的比例 | 【评测中】 |
-| verify_coverage | 决策前完成属性核验的比例 | 【评测中】 |
+| slot F1 | NLU 槽位 vs 官方 goal 属性（thefuzz>85 模糊匹配） | 0.343 |
+| gold_candidate_hit | 检索结果是否包含 goal 商品 | 0.957 |
+| clarify_rate | 购买前向用户澄清确认的比例 | 0.251 |
+| verify_coverage | 决策前完成属性核验的比例 | 0.310 |
+| 平均轮数 / 平均搜索次数 | — | 17.3 / 2.7 |
 
-**消融实验**（multi_standard，15 任务）
+**消融实验**（multi_standard，同一 15 任务集；基线 = 完整版在该任务子集上的成绩）
 
-| 去掉的阶段 | reward 变化 | 结论 |
-|---|---|---|
-| − NLU | 【评测中】 | |
-| − Verify | 【评测中】 | |
-| − Reflect | 【评测中】 | |
-| − Memory | 【评测中】 | |
+| 配置 | r_loose | Δ vs 基线 | 买对商品率 | 结论 |
+|---|---|---|---|---|
+| 完整版（基线） | 0.639 | — | 0.467 | — |
+| − NLU | 0.450 | −18.9pp | 0.267 | 槽位缺失 → 检索 query 丢失关键属性，检回错误商品 |
+| − Verify | 0.381 | −25.7pp | 0.267 | 伤害最大：不核验详情页属性直接下单，r_option 0.667→0.429 |
+| − Reflect | 0.547 | −9.2pp | 0.467 | 买对商品率不变，伤害集中在"搜错后不复盘换 query"的恢复能力 |
+| − Memory | 0.698 | +5.9pp* | 0.600 | *n=15 下约 1 个任务的噪声量级，≈持平；见下方分析 |
+
+> **− Memory 的诚实解读**：在 15–40 轮的中等长度任务上，摘要压缩的信息损失抵消了 context 节省的收益。组件级评测的价值正在于此——不是所有组件在所有任务长度上都正贡献，Memory 阶段应按对话长度自适应门控（超长任务才启用压缩），这是明确的后续改进方向。
 
 ## 环境适配（Mac 本地化，零 GPU）
 

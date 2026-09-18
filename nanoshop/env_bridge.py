@@ -232,9 +232,29 @@ def get_shared_state(if_persona: bool = False) -> Dict[str, Any]:
     _SHARED["products"] = all_products
     _SHARED["product_item_dict"] = product_item_dict
     _SHARED["product_prices"] = product_prices
-    _SHARED[f"goals_{key}"] = get_goals(
-        all_products, product_prices, if_persona=if_persona
-    )
+    if if_persona:
+        # Persona-mode adaptations (the released data file lacks the fields
+        # the official persona path expects, see engine/goal.py):
+        # 1. keep only items that actually carry a user_persona document --
+        #    otherwise the agent would face a vague instruction with no way
+        #    to infer the hidden requirement (~80% of items have none);
+        # 2. inject `instruction_sample` = full instruction as a fallback,
+        #    so the goal's instruction_text stays the concrete requirement.
+        #    The shopper simulator receives it (official multi_eval
+        #    semantics) while the agent only ever sees instruction_simple
+        #    plus the persona document.
+        persona_products = [it for it in all_products if it.get("user_persona")]
+        for item in persona_products:
+            for product in item["instructions"]:
+                if "instruction_sample" not in product:
+                    product["instruction_sample"] = product["instruction"]
+        _SHARED[f"goals_{key}"] = get_goals(
+            persona_products, product_prices, if_persona=True
+        )
+    else:
+        _SHARED[f"goals_{key}"] = get_goals(
+            all_products, product_prices, if_persona=False
+        )
     logger.info("Built %d goals (%s mode)", len(_SHARED[f"goals_{key}"]), key)
     _SHARED[key] = True
     if "server" not in _SHARED:
@@ -258,7 +278,10 @@ def _build_shared_server() -> None:
     server.product_prices = _SHARED["product_prices"]
     server.search_engine = _SHARED["bm25"]
     server.existed_goals = True
-    server.goals = _SHARED["goals_standard"]
+    if "goals_standard" in _SHARED:
+        server.goals = _SHARED["goals_standard"]
+    else:  # persona goals were built first
+        server.goals = _SHARED["goals_persona"]
     server.show_attrs = False
     server.shuffle_goals = False
     server.shuffle_num = 20
@@ -271,7 +294,9 @@ def _build_shared_server() -> None:
     server.sample_time = 0
     server.assigned_instruction_text = None
     _SHARED["server"] = server
-    _SHARED["server_mode"] = "standard"
+    _SHARED["server_mode"] = (
+        "standard" if "goals_standard" in _SHARED else "persona"
+    )
 
 
 class LocalShopEnv:
@@ -292,7 +317,15 @@ class LocalShopEnv:
 
         # Swap the shared server onto the right goal set for this mode.
         if _SHARED.get("server_mode") != key:
+            import numpy as np
+
             _SHARED["server"].goals = _SHARED[f"goals_{key}"]
+            _SHARED["server"].weights = [
+                g["weight"] for g in _SHARED["server"].goals
+            ]
+            _SHARED["server"].cum_weights = [
+                0
+            ] + np.cumsum(_SHARED["server"].weights).tolist()
             _SHARED["server_mode"] = key
 
         # A single env instance can serve tasks sequentially: each reset(idx)
