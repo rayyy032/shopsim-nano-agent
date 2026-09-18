@@ -1,0 +1,5 @@
+openai>=1.30
+jieba>=0.42
+rank_bm25>=0.2.2
+thefuzz>=0.20
+numpy>=1.24
