@@ -1,8 +1,6 @@
 # ShopSim Nano Agent：中文电商多轮导购 Agent
 
-基于阿里 **ShopSimulator**（ACL 2026, arXiv:2601.18225）淘宝购物环境构建的多轮对话导购 Agent。采用 nano-agent 极简架构思想，将 LLM 的"一次生成"拆解为**七阶段确定性编排**，每个阶段可独立观测、可单独消融。
-
-> 诚实署名：环境与评测协议 Based on 阿里 ShopSimulator；七阶段 pipeline、状态机、Trace、组件级评测与全部实现代码为本人独立完成。
+基于阿里 **ShopSimulator**（ACL 2026, arXiv:2601.18225）淘宝购物环境构建的多轮对话导购 Agent。采用 nano-agent 极简架构思想，将 LLM 的"一次生成"拆解为**七阶段确定性编排**，每个阶段可独立观测、可单独消融。环境与评测协议 Based on 阿里 ShopSimulator，七阶段 pipeline、状态机、Trace、组件级评测与全部实现代码为本人独立完成。
 
 ## 核心设计：七阶段编排
 
@@ -78,11 +76,11 @@
 | − Reflect | 0.547 | −9.2pp | 0.467 | 买对商品率不变，伤害集中在"搜错后不复盘换 query"的恢复能力 |
 | − Memory | 0.698 | +5.9pp* | 0.600 | *n=15 下约 1 个任务的噪声量级，≈持平；见下方分析 |
 
-> **− Memory 的诚实解读**：在 15–40 轮的中等长度任务上，摘要压缩的信息损失抵消了 context 节省的收益。组件级评测的价值正在于此——不是所有组件在所有任务长度上都正贡献，Memory 阶段应按对话长度自适应门控（超长任务才启用压缩），这是明确的后续改进方向。
+> **− Memory 的发现**：在 15–40 轮的中等长度任务上，摘要压缩的信息损失抵消了 context 节省的收益。组件级评测的价值正在于此——不是所有组件在所有任务长度上都正贡献，Memory 阶段应按对话长度自适应门控（超长任务才启用压缩），这是明确的后续改进方向。
 
 ## 环境适配（Mac 本地化，零 GPU）
 
-官方环境依赖 JDK 21（Lucene/pyserini）+ torch + selenium + Flask 多进程部署。本仓库在纯 CPU Mac 上跑通全量 1.34M 商品、23,421 个 goal：
+官方环境依赖 JDK 21（Lucene/pyserini）+ torch + selenium + Flask 多进程部署。本仓库在纯 CPU Mac 上跑通全量 23,421 个商品/任务条目（eval 数据文件 134MB）：
 
 - **BM25 替换 Lucene**：jieba 分词 + rank_bm25，保持 `search(query,k)/doc(docid)` 接口与官方 engine 完全兼容
 - **进程内单例环境**：绕过 Flask 20-env 部署，手动构造共享 SimServer（内存 1.5GB 一次加载，多 worker 复用）
