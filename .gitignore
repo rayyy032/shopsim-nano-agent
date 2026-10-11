@@ -10,3 +10,6 @@ __pycache__/
 outputs/
 *.log
 .DS_Store
+
+# exported training data (regenerable from outputs/)
+exports/

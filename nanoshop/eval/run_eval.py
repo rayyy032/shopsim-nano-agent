@@ -66,10 +66,12 @@ def run_one(args_tuple) -> str:
         ablations,
         max_turns,
         worker_idx,
+        agent_name,
     ) = args_tuple
 
     logging.basicConfig(level=logging.WARNING)
     from ..agent import ShoppingAgent
+    from ..agents import make_agent
     from ..env_bridge import LocalShopEnv
     from ..llm import LLM
     from ..shopper import ShopperSimulator
@@ -94,6 +96,7 @@ def run_one(args_tuple) -> str:
     )
     shopper = ShopperSimulator(shopper_llm) if mode == "multi" else None
 
+    policy = make_agent(agent_name, agent_llm, max_turns=max_turns, ablations=ablations)
     agent = ShoppingAgent(
         env=env,
         llm=agent_llm,
@@ -101,6 +104,7 @@ def run_one(args_tuple) -> str:
         max_turns=max_turns,
         ablations=ablations,
         shopper=shopper,
+        policy=policy,
     )
 
     setting = f"{mode}_{'persona' if persona else 'standard'}"
@@ -134,6 +138,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["single", "multi"], default="multi")
     parser.add_argument("--persona", default="false")
+    parser.add_argument("--agent", default="nano", choices=["nano", "react"],
+                        help="agent 策略：nano=七阶段 pipeline，react=单 prompt 基线")
     parser.add_argument("--n", type=int, default=30, help="number of sampled tasks")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--tag", default="main")
@@ -149,6 +155,9 @@ def main() -> None:
     ablations = {k: True for k in args.ablate}
     if ablations:
         args.tag = args.tag + "+" + "+".join(sorted(ablations))
+    # 非 nano 策略的输出目录带策略名前缀，避免与主结果混在一起
+    if args.agent != "nano":
+        args.tag = f"{args.agent}.{args.tag}"
 
     if args.task_ids:
         task_ids = [int(x) for x in args.task_ids.split(",")]
@@ -159,13 +168,13 @@ def main() -> None:
           f"tasks={len(task_ids)} ablations={ablations} workers={args.workers}")
 
     if args.workers <= 1:
-        run_one((args.mode, persona, task_ids, args.output, args.tag, ablations, args.max_turns, 0))
+        run_one((args.mode, persona, task_ids, args.output, args.tag, ablations, args.max_turns, 0, args.agent))
     else:
         import multiprocessing as mp
 
         chunks = [task_ids[i::args.workers] for i in range(args.workers)]
         jobs = [
-            (args.mode, persona, chunk, args.output, args.tag, ablations, args.max_turns, i)
+            (args.mode, persona, chunk, args.output, args.tag, ablations, args.max_turns, i, args.agent)
             for i, chunk in enumerate(chunks)
             if chunk
         ]

@@ -1,6 +1,6 @@
 """Metrics: end-to-end scores (official 4-dim reward) + component-level
 metrics mined from the pipeline traces (NLU slot F1, query rewrite gold-hit,
-clarify rate, verify coverage, token overhead).
+clarify rate, verify coverage, token overhead) + Bootstrap 95% CI.
 
 Usage:
     python -m nanoshop.eval.metrics --dir outputs/multi_standard/main
@@ -12,7 +12,33 @@ import argparse
 import glob
 import json
 import os
+import random
 from typing import Any, Dict, List
+
+
+# ------------------------------------------------------------------ bootstrap
+
+def bootstrap_ci(values: List[float], n_boot: int = 2000, alpha: float = 0.05, seed: int = 0) -> Dict[str, float]:
+    """均值的双侧 bootstrap 置信区间；少于 2 个样本时返回退化区间。"""
+    n = len(values)
+    if n == 0:
+        return {}
+    mean = sum(values) / n
+    if n < 2:
+        return {"mean": round(mean, 4), "ci_low": round(mean, 4), "ci_high": round(mean, 4), "n": n}
+    rng = random.Random(seed)
+    means = sorted(
+        sum(values[rng.randrange(n)] for _ in range(n)) / n for _ in range(n_boot)
+    )
+    lo = means[int((alpha / 2) * n_boot)]
+    hi = means[min(int((1 - alpha / 2) * n_boot), n_boot - 1)]
+    return {"mean": round(mean, 4), "ci_low": round(lo, 4), "ci_high": round(hi, 4), "n": n}
+
+
+def _with_ci(values: List[float]) -> Any:
+    """有样本时输出 bootstrap 结果，无样本时输出 None。"""
+    return bootstrap_ci(values) if values else None
+
 
 
 # ---------------------------------------------------------------- end-to-end
@@ -59,6 +85,12 @@ def end_to_end(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         "r_att": round(dim_rate("r_att"), 4),
         "r_option": round(dim_rate("r_option"), 4),
         "r_price": round(dim_rate("r_price"), 4),
+        # Bootstrap 95% CI for the headline metrics
+        "ci95": {
+            "r_loose": _with_ci(rewards),
+            "r_success": _with_ci(full),
+            "right_product": _with_ci(right),
+        },
     }
 
 

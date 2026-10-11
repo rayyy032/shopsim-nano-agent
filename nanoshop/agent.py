@@ -15,15 +15,23 @@ import time
 import traceback
 from typing import Any, Dict, Optional
 
+from .agents.base import BaseAgent
 from .env_bridge import LocalShopEnv
 from .llm import LLM
-from .pipeline import ROLE_ENV, ROLE_SHOPPER, ShoppingPipeline
+from .pipeline import ROLE_ENV, ROLE_SHOPPER
 from .shopper import ShopperSimulator
 
 logger = logging.getLogger(__name__)
 
 
 class ShoppingAgent:
+    """env-loop harness：驱动任意 BaseAgent 策略跑完一个任务。
+
+    环境交互、用户模拟、守卫逻辑（死循环 / 规格选择 / 购买确认）、
+    结果落盘都在这里；策略只负责"看观察、出动作"。评测代码与策略
+    无关，换 nano / react / 训练出的 policy 都走同一条路。
+    """
+
     def __init__(
         self,
         env: LocalShopEnv,
@@ -32,6 +40,7 @@ class ShoppingAgent:
         max_turns: int = 40,
         ablations: Optional[Dict[str, bool]] = None,
         shopper: Optional[ShopperSimulator] = None,
+        policy: Optional[BaseAgent] = None,
     ):
         self.env = env
         self.llm = llm
@@ -39,8 +48,14 @@ class ShoppingAgent:
         self.max_turns = max_turns
         self.ablations = ablations or {}
         self.shopper = shopper
-        self.pipeline = ShoppingPipeline(llm=llm, max_turns=max_turns, ablations=self.ablations)
-        self.pipeline.env = env  # for asin<->title matching in Verify
+        self.policy = policy
+        if self.policy is None:
+            # 向后兼容：不传 policy 时默认七阶段 nano
+            from .agents import make_agent
+
+            self.policy = make_agent("nano", llm, max_turns=max_turns, ablations=self.ablations)
+        if getattr(self.policy, "needs_env", False):
+            self.policy.env = env
 
     def run_task(self, task_id: int, output_dir: str, model_tag: str = "") -> Dict[str, Any]:
         """Run one task end-to-end; writes {output_dir}/{model_tag}/{task_id}.json
@@ -70,6 +85,7 @@ class ShoppingAgent:
         result["latency_s"] = round(time.time() - t0, 1)
         result["ablations"] = self.ablations
         result["mode"] = self.mode
+        result["agent"] = getattr(self.policy, "name", "unknown")
 
         out = os.path.join(output_dir, model_tag) if model_tag else output_dir
         os.makedirs(out, exist_ok=True)
@@ -89,7 +105,7 @@ class ShoppingAgent:
             instruction = reset_info["instruction"]
 
         persona = reset_info.get("user_persona")
-        self.pipeline.start_task(task_id, instruction, persona, mode=self.mode)
+        self.policy.start_task(task_id, instruction, persona, mode=self.mode)
 
         conversation: list = []
         done = False
@@ -112,11 +128,11 @@ class ShoppingAgent:
 
         while not done and turn < self.max_turns:
             turn += 1
-            action_type, action_content = self.pipeline.step(turn, role, message)
+            action_type, action_content = self.policy.step(turn, role, message)
             conversation.append({"agent_action": f"{action_type}: {action_content}"})
 
             # --- state bookkeeping for guards ---
-            state = self.pipeline.state
+            state = self.policy.state
             state.last_actions.append(f"{action_type}:{action_content}")
 
             if action_type == "ask_user":
@@ -139,8 +155,10 @@ class ShoppingAgent:
                 if clicked not in nav and not clicked.isdigit():
                     state.selected_option = clicked
                     # attach to the current product view if known
+                    # (nano 策略把 _last_item_asin 记在 pipeline 上)
+                    policy_impl = getattr(self.policy, "pipeline", self.policy)
                     for v in state.viewed_products.values():
-                        if v.asin == getattr(self.pipeline, "_last_item_asin", None):
+                        if v.asin == getattr(policy_impl, "_last_item_asin", None):
                             v.selected_option = clicked
 
             env_resp = self.env.interact(f"Thought: pipeline\nAction: {action_content}")
@@ -173,13 +191,13 @@ class ShoppingAgent:
 
     def _finalize(self, env_resp: Dict[str, Any], conversation: list) -> Dict[str, Any]:
         return {
-            "task_id": self.pipeline.state.task_id,
+            "task_id": self.policy.state.task_id,
             "reward": env_resp.get("reward", 0),
             "reward_detail": env_resp.get("reward_detail", {}),
             "goal": env_resp.get("goal", {}),
             "purchase": env_resp.get("purchase", {}),
             "conversation": conversation,
-            "trace": self.pipeline.trace.to_dict(),
+            "trace": self.policy.trace.to_dict(),
             "tokens": self._token_usage(),
-            "state": self.pipeline.state.snapshot(),
+            "state": self.policy.state.snapshot(),
         }
