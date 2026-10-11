@@ -141,7 +141,7 @@ python scripts/export_trajectories.py --setting multi_standard --tag main --min-
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt   # openai jieba rank_bm25 thefuzz python-dotenv
+pip install -r requirements.txt   # 策略层 + 官方环境连带依赖
 
 cp .env.example .env              # 填入 DeepSeek/OpenAI 兼容 API key
 export SHOPSIM_REPO=/path/to/ShopSimulator   # 官方仓库（数据 + 源码）
@@ -163,6 +163,26 @@ python -m nanoshop.eval.metrics --dir outputs/multi_standard/main
 # 轨迹导出
 python scripts/export_trajectories.py --setting multi_standard --tag main
 ```
+
+### 环境说明（macOS / Python 3.11+）
+
+官方 `shop_env/requirements.txt` 是 Python 3.7 时代的 pin，照抄装不上。实测可跑的组合与两个坑：
+
+```bash
+# zh_core_web_sm 不在 PyPI，走 spacy-models 的 release wheel（版本要与 spacy 大版本一致）
+pip install spacy
+pip install https://github.com/explosion/spacy-models/releases/download/zh_core_web_sm-3.8.0/zh_core_web_sm-3.8.0-py3-none-any.whl
+```
+
+`gym`：官方 pin 的 `0.24.0` 在 Python 3.11+ 没有 wheel（只有 sdist），且与 `numpy>=2` 冲突；`0.26.2` 的 `gym.Env` / `envs.registration.register` 接口在本项目用到的地方一致，换版本即可。若 `pip install jieba` 报 `OSError: EEXIST ... pip-install-*/jieba_xxx`（部分 macOS + 新版 pip 上解包 sdist 失败），手动解包绕过：
+
+```bash
+curl -sLO https://files.pythonhosted.org/packages/c6/cb/18eeb235f833b726522d7ebed54f2278ce28ba9438e3135ab0278d9792a2/jieba-0.42.1.tar.gz
+tar xzf jieba-0.42.1.tar.gz jieba-0.42.1/jieba
+cp -R jieba-0.42.1/jieba "$(python -c 'import site;print(site.getsitepackages()[0])')"/
+```
+
+环境加载一次约 1.5GB 内存（23,421 个商品全量索引），跑评测时机器别开别的重负载。
 
 ## 项目结构
 

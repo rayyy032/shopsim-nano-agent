@@ -1,5 +1,19 @@
+# 评测 runner / 策略层
 openai>=1.30
-jieba>=0.42
 rank_bm25>=0.2.2
 thefuzz>=0.20
 numpy>=1.24
+jieba>=0.42
+python-dotenv>=1.0
+
+# 官方 ShopSimulator 环境（engine / web_agent_site）连带依赖
+# 官方 shop_env/requirements.txt 是 py3.7 时代的 pin，这里按 3.11+ 实际情况重列
+pandas>=1.4
+flask>=3.0
+beautifulsoup4>=4.11
+tqdm
+requests
+pyyaml
+scikit-learn
+spacy>=3.7          # 需额外装中文模型 zh_core_web_sm，见 README
+gym==0.26.2         # 官方 pin 0.24.0 在 py3.11+ 无 wheel 且与 numpy>=2 冲突，0.26.2 接口兼容
